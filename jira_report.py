@@ -22,6 +22,7 @@ COLORS = {
 # Set this to zero to disable further following links
 MAX_JIRA_SEARCH_DEPTH = 3
 
+
 def __search_jira_recursively(server, search_term, blacklist, vertices, edges, recursive_depth):
 
     if recursive_depth <= 0:
@@ -62,6 +63,7 @@ def __search_jira_recursively(server, search_term, blacklist, vertices, edges, r
     if followup_search and recursive_depth > 0:
         __search_jira_recursively(server, followup_search, blacklist, vertices, edges, recursive_depth)
 
+
 def run_report(server, search_term, blacklist):
     # This function performs JIRA search and build up a DiGraph object for dependency between JIRA issues.
     # it runs recursive search, taking an initial DiGraph object (vertices and edges) and keeps accumulating to
@@ -81,8 +83,10 @@ def run_report(server, search_term, blacklist):
     __search_jira_recursively(server, search_term, blacklist, the_vertices, the_edges, MAX_JIRA_SEARCH_DEPTH)
     return the_vertices, the_edges
 
+
 def color_coded_status(status):
     return COLORS[status] if status in COLORS.keys() else "orange"
+
 
 def wrap_text(input_text, wrap_size=3):
     words = input_text.strip().replace("'", SPACE).replace('"', SPACE).split(SPACE)
@@ -97,6 +101,7 @@ def wrap_text(input_text, wrap_size=3):
         count += 1
     return output_text.strip()
 
+
 def get_jira_connection():
     jira_url='https://jira.ec2.local'
     import os
@@ -109,11 +114,13 @@ def get_jira_connection():
         print(f'ERROR: Cannot connect to {jira_url}! Please define JIRA_USER, JIRA_PASSWORD, JIRA_URL')
         exit(1)
 
+
 def in_black_list(issue_summary, black_list):
     for item in black_list:
         if item in issue_summary:
             return True
     return False
+
 
 def update_with_link(link, link_type_name, current_vertices, current_edges, current_issue):
     if hasattr(link, link_type_name):
@@ -130,17 +137,16 @@ def update_with_link(link, link_type_name, current_vertices, current_edges, curr
         elif link_type_name == "inwardIssue":
             current_edges.add((linked_text, current_issue))
 
+
 def generate_graphviz_text(vertices, edges):
-    webgraphviz_text = 'digraph G { node [fontname = "Verdana", style = "filled"];\n'
+    graphviz_text = 'digraph G { node [fontname = "Verdana", style = "filled"];\n'
     for v in vertices:
-        webgraphviz_text += '"%s" [color="%s"];\n' %(v[0], color_coded_status(v[1]))
+        graphviz_text += '"%s" [color="%s"];\n' %(v[0], color_coded_status(v[1]))
     for pair in edges:
-        webgraphviz_text += '"%s" -> "%s";\n' % (pair[0], pair[1])
-    webgraphviz_text += '}\n'
+        graphviz_text += '"%s" -> "%s";\n' % (pair[0], pair[1])
+    graphviz_text += '}\n'
+    return graphviz_text
 
-
-    
-    return webgraphviz_text
 
 def draw_dependency_diagram(edges):
     # dependency to networkx (which ultimately needs 'dot' is broken after I install python 3.7 to use with AWS
@@ -150,6 +156,7 @@ def draw_dependency_diagram(edges):
 #     p=nx.drawing.nx_pydot.to_pydot(G)
 #     p.write_png("dependency.png")
     pass
+
 
 def read_input_args():
     import sys
@@ -164,19 +171,8 @@ def read_input_args():
     else:
         raise EnvironmentError('Insufficient number of inputs arguments, see help!')
 
-if __name__ == '__main__':
-    query, black_list = read_input_args()
-    jira_server = get_jira_connection()
-    jira_issues, jira_links = run_report(jira_server, query, black_list)
 
-    draw_dependency_diagram(jira_links)
-
-    print('\n\nhttp://www.webgraphviz.com/\n\n')
-    graphviz_text = generate_graphviz_text(jira_issues, jira_links)
-    print(graphviz_text)
-    import pyperclip
-    pyperclip.copy(graphviz_text)
-
+def print_planning_report(jira_issues):
     print("TODO: List of items still to be done")
     todo_points = 0
     for v in jira_issues:
@@ -218,5 +214,21 @@ if __name__ == '__main__':
             # else:
             #     print(f'{eco} - {v[1]}')
     print('indev_points: %.2f' % indev_points)
+
+
+if __name__ == '__main__':
+    query, black_list = read_input_args()
+    jira_server = get_jira_connection()
+    jira_issues, jira_links = run_report(jira_server, query, black_list)
+
+    draw_dependency_diagram(jira_links)
+
+    print('\n\nhttp://www.webgraphviz.com/\n\n')
+    graphviz_text = generate_graphviz_text(jira_issues, jira_links)
+    print(graphviz_text)
+    import pyperclip
+    pyperclip.copy(graphviz_text)
+
+    print_planning_report(jira_issues)
 
 
