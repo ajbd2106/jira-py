@@ -1,15 +1,10 @@
-import configparser
 import re
 
 from jira import JIRA
 # import networkx as nx
 
-
 NEW_LINE = '\\n'
 SPACE = ' '
-
-# https://confluence.ec2.local/display/ECO/SSL+Certificates+at+Resmed
-# https://community.atlassian.com/t5/Jira-questions/JIRA-Python-Connection-Over-HTTPS/qaq-p/376904
 
 COLORS = {
     "Open": "AliceBlue",
@@ -24,7 +19,7 @@ COLORS = {
     "Closed": "PaleGreen"
 }
 
-# Set this to zero to disable following links
+# Set this to zero to disable further following links
 MAX_JIRA_SEARCH_DEPTH = 3
 
 def __search_jira_recursively(server, search_term, blacklist, vertices, edges, recursive_depth):
@@ -43,9 +38,6 @@ def __search_jira_recursively(server, search_term, blacklist, vertices, edges, r
 
         # This is a hack. There is no neat way to extract estimate points at this stage, so this is only a guess
         # It may not work for another JIRA instance
-
-        if issue.key == 'ECO-38281':
-            print('here ECO-38281')
 
         estimate = -1.0
         if hasattr(issue.fields, 'customfield_10003'):
@@ -68,7 +60,6 @@ def __search_jira_recursively(server, search_term, blacklist, vertices, edges, r
 
     # if followup_search is not '':
     if followup_search and recursive_depth > 0:
-        print("SEARCH AGAIN")
         __search_jira_recursively(server, followup_search, blacklist, vertices, edges, recursive_depth)
 
 def run_report(server, search_term, blacklist):
@@ -85,7 +76,6 @@ def run_report(server, search_term, blacklist):
     # param "recursive_depth": A limit on following with JIRA issue do after (to avoid infinite loop)
 
     # return  "vertices" and "edges": the initial and final DiGraph object produced by this report
-
     the_vertices = set()
     the_edges = set()
     __search_jira_recursively(server, search_term, blacklist, the_vertices, the_edges, MAX_JIRA_SEARCH_DEPTH)
@@ -108,12 +98,16 @@ def wrap_text(input_text, wrap_size=3):
     return output_text.strip()
 
 def get_jira_connection():
-    config = configparser.ConfigParser()
-    config.read('jira.ini')
-    jira_url = config['jira']['url']
-    username = config['jira']['username']
-    password = config['jira']['password']
-    return JIRA(options={'server': jira_url, 'verify':False}, basic_auth=(username, password))
+    jira_url='https://jira.ec2.local'
+    import os
+    try:
+        username = os.environ['JIRA_USER']
+        password = os.environ['JIRA_PASSWORD']
+        jira_url = os.environ.get('JIRA_URL', jira_url)
+        return JIRA(options={'server': jira_url, 'verify':False}, basic_auth=(username, password))
+    except KeyError as e:
+        print(f'ERROR: Cannot connect to {jira_url}! Please define JIRA_USER, JIRA_PASSWORD, JIRA_URL')
+        exit(1)
 
 def in_black_list(issue_summary, black_list):
     for item in black_list:
@@ -136,7 +130,7 @@ def update_with_link(link, link_type_name, current_vertices, current_edges, curr
         elif link_type_name == "inwardIssue":
             current_edges.add((linked_text, current_issue))
 
-def format_report_web_graphviz(vertices, edges):
+def generate_graphviz_text(vertices, edges):
     webgraphviz_text = 'digraph G { node [fontname = "Verdana", style = "filled"];\n'
     for v in vertices:
         webgraphviz_text += '"%s" [color="%s"];\n' %(v[0], color_coded_status(v[1]))
@@ -144,7 +138,7 @@ def format_report_web_graphviz(vertices, edges):
         webgraphviz_text += '"%s" -> "%s";\n' % (pair[0], pair[1])
     webgraphviz_text += '}\n'
 
-    print(webgraphviz_text)
+
     
     return webgraphviz_text
 
@@ -157,33 +151,33 @@ def draw_dependency_diagram(edges):
 #     p.write_png("dependency.png")
     pass
 
+def read_input_args():
+    import sys
+    if len(sys.argv) >= 2:
+        input_search_term = sys.argv[1]
+        black_list = []
+        if len(sys.argv) >= 3:
+            black_list = [x.strip(' ') for x in sys.argv[2].split(',')]
+        print(f'input_search_term = {input_search_term}')
+        print(f'black_list = {black_list}')
+        return input_search_term, black_list
+    else:
+        raise EnvironmentError('Insufficient number of inputs arguments, see help!')
+
 if __name__ == '__main__':
-
+    query, black_list = read_input_args()
     jira_server = get_jira_connection()
-
-    # Epic planning
-    # query = 'key = ECO-38246'
-    # query = '"Epic Link" = ECO-37312 OR "Epic Link" = ECO-37401' # (Casablanca spares + Location tracking)
-    query = '"Epic Link" = ECO-43958' # (Pacific to AWS)
-    # query = '"Epic Link" = ECO-25636' # (SGS epic)
-    # query = 'fixVersion ~ "Briscoe COVID 2"' # (Briscoe COVID 2)
-    # query = '"Epic Link" = ECO-38162 AND fixVersion ~ "Briscoe COVID 2" and creator = my.pham' # (Briscoe COVID 2)
-    # query = '"Epic Link" = ECO-32616' # RHS epic
-    # query = 'project = ECO AND fixVersion = "Briscoe 2.0"'
-    # To hold items that we don't want to include in the report, like this card, which is too hard to filter
-    black_list = ["ECO-37008", "ECO-37009"]
-
     jira_issues, jira_links = run_report(jira_server, query, black_list)
 
     draw_dependency_diagram(jira_links)
 
     print('\n\nhttp://www.webgraphviz.com/\n\n')
-    graphviz_text = format_report_web_graphviz(jira_issues, jira_links)
-
+    graphviz_text = generate_graphviz_text(jira_issues, jira_links)
+    print(graphviz_text)
     import pyperclip
     pyperclip.copy(graphviz_text)
 
-    print("TODO")
+    print("TODO: List of items still to be done")
     todo_points = 0
     for v in jira_issues:
         if v[1] in ["Open", "Reopened", "Ready for Review", "Ready for Development"]: # and (v[2] and v[2] > 0.5):
@@ -194,10 +188,9 @@ if __name__ == '__main__':
                 if estimate > 1.0:
                     print('https://jira.ec2.local/browse/%s : %.2f, %s' % (eco, estimate, v[0].replace('\\n', ' ')))
                     todo_points += estimate
-
     print('todo_points: %.2f' % todo_points)
 
-    print(" TODO - But unestimated")
+    print("TODO: List of items still to be done but not yet estimated")
     unestimated_points = 0
     for v in jira_issues:
         if v[1] in ["Open", "Reopened", "Ready for Review", "Ready for Development"]: # and (v[2] and v[2] > 0.5):
@@ -208,7 +201,6 @@ if __name__ == '__main__':
                 if estimate < 1.0:
                     print('https://jira.ec2.local/browse/%s : %.2f, %s' % (eco, estimate, v[0].replace('\\n', ' ')))
                     unestimated_points += estimate
-
     print('unestimated_points: %.2f' % unestimated_points)
 
     print("Currently in progress - in dev / review / testing")
@@ -225,7 +217,6 @@ if __name__ == '__main__':
                         indev_points += estimate
             # else:
             #     print(f'{eco} - {v[1]}')
-
     print('indev_points: %.2f' % indev_points)
 
 

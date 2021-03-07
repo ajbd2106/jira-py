@@ -1,6 +1,7 @@
 *.ini
 .idea
-
+*.nhap
+nhap.*
 
 
 # Byte-compiled / optimized / DLL files
