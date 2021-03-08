@@ -163,11 +163,12 @@ def read_input_args():
     if len(sys.argv) >= 2:
         input_search_term = sys.argv[1]
         black_list = []
+        todo = None
         if len(sys.argv) >= 3:
             black_list = [x.strip(' ') for x in sys.argv[2].split(',')]
-        print(f'input_search_term = {input_search_term}')
-        print(f'black_list = {black_list}')
-        return input_search_term, black_list
+            if len(sys.argv) >= 4:
+                todo = sys.argv[3]
+        return input_search_term, black_list, todo
     else:
         raise EnvironmentError('Insufficient number of inputs arguments, see help!')
 
@@ -217,7 +218,7 @@ def print_planning_report(jira_issues):
 
 
 if __name__ == '__main__':
-    query, black_list = read_input_args()
+    query, black_list, todo = read_input_args()
     jira_server = get_jira_connection()
     jira_issues, jira_links = run_report(jira_server, query, black_list)
 
@@ -226,9 +227,11 @@ if __name__ == '__main__':
     print('\n\nhttp://www.webgraphviz.com/\n\n')
     graphviz_text = generate_graphviz_text(jira_issues, jira_links)
     print(graphviz_text)
-    import pyperclip
-    pyperclip.copy(graphviz_text)
+    #This bit cannot work in a docker container
+    #import pyperclip
+    #pyperclip.copy(graphviz_text)
 
-    print_planning_report(jira_issues)
+    if todo:
+        print_planning_report(jira_issues)
 
 
